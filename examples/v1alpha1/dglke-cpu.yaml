@@ -1,0 +1,40 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgl-complex
+  namespace: dgl-operator
+spec:
+  cleanPodPolicy: Running
+  dglReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: dgloperator/dglke-base:v0.1.0
+            name: dgl-complex
+            imagePullPolicy: Always
+            command:
+            - dglkerun
+            args:
+            - --num-partitions
+            - "2"
+            - --num-servers
+            - "1"
+            - --model
+            - ComplEx
+    Worker:
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - image: dgloperator/dglke-base:v0.1.0
+            name: dgl-complex
+            imagePullPolicy: Always
+            resources:
+              requests:
+                memory: "20Gi"
+                cpu: "5"
+              limits:
+                memory: "20Gi"
+                cpu: "5"

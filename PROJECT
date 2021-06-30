@@ -1,0 +1,7 @@
+domain: qihoo.net
+repo: github.com/Qihoo360/dgl-operator
+resources:
+- group: dgljob
+  kind: DGLJob
+  version: v1alpha1
+version: "2"

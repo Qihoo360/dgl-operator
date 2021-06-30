@@ -1,0 +1,7 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgljob-sample
+spec:
+  # Add fields here
+  foo: bar

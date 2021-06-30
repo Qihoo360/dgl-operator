@@ -1,0 +1,219 @@
+#!/bin/bash
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+
+case $key in
+    -g|--graph-name)
+    GRAPHNAME="$2"
+    shift
+    shift
+    ;;
+    # load and partition
+    --num-partitions)
+    PARTITIONS="$2"
+    shift
+    shift
+    ;;
+    --partition-entry-point)
+    PARTITION_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    --balance-train)
+    BALANCE_TRAIN=true
+    shift
+    ;;
+    --balance-edges)
+    BALANCE_EDGES=true
+    shift
+    ;;
+    # dispatch and launch
+    --dispatch-entry-point)
+    DISPATCH_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    --launch-entry-point)
+    LAUNCH_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    # train
+    --train-entry-point)
+    TRAIN_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    --worksapce)
+    WORKSPACE="$2"
+    shift
+    shift
+    ;;
+    --num-epochs)
+    EPOCHS="$2"
+    shift
+    shift
+    ;;
+    --batch-size)
+    BATCH_SIZE="$2"
+    shift
+    shift
+    ;;
+    --partition-config-path)
+    LAUNCHER_CONFIG_PATH="$2"
+    shift
+    shift
+    ;;
+    --num-servers)
+    SERVERS="$2"
+    shift
+    shift
+    ;;
+    --num-workers)
+    WORKERS="$2"
+    shift
+    shift
+    ;;
+    --num-trainers)
+    TRAINERS="$2"
+    shift
+    shift
+    ;;
+    --num-samplers)
+    SAMPLERS="$2"
+    shift
+    shift
+    ;;
+    --revise-hostfile-entry-point)
+    REVISE_HOSTFILE_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    *)
+    POSITIONAL+=("$1")
+    shift
+    ;;
+esac
+done
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
+# set default value
+BALANCE_TRAIN=$([[ "$BALANCE_TRAIN" = true ]] && echo "--balance_train" || echo "")
+BALANCE_EDGES=$([[ "$BALANCE_EDGES" = true ]] && echo "--balance_edges" || echo "")
+if [ -z ${WORKSPACE+x} ]; then WORKSPACE="/dgl_workspace"; fi
+if [ -z ${DISPATCH_ENTRY_POINT+x} ]; then DISPATCH_ENTRY_POINT="tools/dispatch.py"; fi
+if [ -z ${LAUNCH_ENTRY_POINT+x} ]; then LAUNCH_ENTRY_POINT="tools/launch.py"; fi
+if [ -z ${LAUNCHER_CONFIG_PATH+x} ]; then LAUNCHER_CONFIG_PATH="$WORKSPACE/dataset/$GRAPHNAME.json"; fi
+if [ -z ${WORKER_PARTITION_CONFIG_PATH+x} ]; then WORKER_PARTITION_CONFIG_PATH="$WORKSPACE/workload/$GRAPHNAME.json"; fi
+if [ -z ${REVISE_HOSTFILE_ENTRY_POINT+x} ]; then REVISE_HOSTFILE_ENTRY_POINT="tools/revise_hostfile.py"; fi
+
+STARTTIME=$(date +%s)
+
+if ! [ -z ${DGL_OPERATOR_PHASE_ENV+x} ] && [ $DGL_OPERATOR_PHASE_ENV = "Partitioner" ]
+then
+    # partition on partitioner
+    echo "Phase 1/5: load and partition graph"
+    echo "----------"
+
+    DGLBACKEND=pytorch python $PARTITION_ENTRY_POINT \
+    --graph_name $GRAPHNAME \
+    --workspace $WORKSPACE \
+    --rel_data_path "dataset" \
+    --num_parts $PARTITIONS \
+    $BALANCE_TRAIN \
+    $BALANCE_EDGES || \
+    { echo "----------" && echo "Phase 1/5 error raised" && exit 1;}
+
+    PHASE1_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 1/5 finished"
+    echo "Phase : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    # deliver partitions to launcher
+    PHASE2_STARTTIME=$(date +%s)
+    echo "Phase 2/5: deliver partitions"
+    echo "----------"
+
+    python $LAUNCH_ENTRY_POINT \
+    --workspace $WORKSPACE \
+    --target_dir $WORKSPACE \
+    --ip_config "/etc/dgl/leadfile" \
+    --cmd_type "copy_batch_container" \
+    --container "watcher-loop-partitioner" \
+    --source_file_paths "$WORKSPACE/dataset" || \
+    { echo "----------" && echo "Phase 2/5 error raised" && exit 1;}
+
+    PHASE2_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 2/5 finished"
+    echo "Phase : $(($PHASE2_ENDTIME - $PHASE2_STARTTIME)) seconds"
+    echo "Total : $(($PHASE2_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+else
+    # launcher dispatch
+    PHASE3_STARTTIME=$(date +%s)
+    echo "Phase 3/5: dispatch partitions"
+    echo "----------"
+
+    python $DISPATCH_ENTRY_POINT \
+    --workspace $WORKSPACE \
+    --rel_data_path "dataset" \
+    --rel_workload_path "workload" \
+    --part_config $LAUNCHER_CONFIG_PATH \
+    --ip_config "/etc/dgl/hostfile" || \
+    { echo "----------" && echo "Phase 3/5 error raised" && exit 1;}
+
+    PHASE3_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 3/5 finished"
+    echo "Phase : $(($PHASE3_ENDTIME - $PHASE3_STARTTIME)) seconds"
+    echo "Total : $(($PHASE3_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    # batch revise hostfile
+    PHASE4_STARTTIME=$(date +%s)
+    echo "Phase 4/5: batch revise hostfile for DGL"
+    echo "----------"
+
+    python $LAUNCH_ENTRY_POINT \
+    --ip_config "/etc/dgl/hostfile" \
+    --cmd_type "exec_batch" \
+    "python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGL" || \
+    { echo "----------" && echo "Phase 4/5 error raised" && exit 1;}
+
+    PHASE4_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 4/5 finished"
+    echo "Phase : $(($PHASE4_ENDTIME - $PHASE4_STARTTIME)) seconds"
+    echo "Total : $(($PHASE4_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    # train
+    PHASE5_STARTTIME=$(date +%s)
+    echo "Phase 5/5: launch the training"
+    echo "----------"
+
+    python $LAUNCH_ENTRY_POINT \
+    --workspace $WORKSPACE \
+    --num_trainers $TRAINERS \
+    --num_samplers $SAMPLERS \
+    --num_servers $SERVERS \
+    --num_parts $PARTITIONS \
+    --part_config $WORKER_PARTITION_CONFIG_PATH \
+    --ip_config "/etc/dgl/hostfile" \
+    --cmd_type "train" \
+    "DGLBACKEND=pytorch python $TRAIN_ENTRY_POINT --graph_name $GRAPHNAME --ip_config $WORKSPACE/hostfile_revised --num_epochs $EPOCHS --batch_size $BATCH_SIZE --num_workers $SAMPLERS" || \
+    { echo "----------" && echo "Phase 5/5 error raised" && exit 1;}
+
+    PHASE5_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 5/5 finished"
+    echo "Phase : $(($PHASE5_ENDTIME - $PHASE5_STARTTIME)) seconds"
+    echo "Total : $(($PHASE5_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+fi

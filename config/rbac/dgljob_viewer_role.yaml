@@ -1,0 +1,20 @@
+# permissions for end users to view dgljobs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dgljob-viewer-role
+rules:
+- apiGroups:
+  - qihoo.net
+  resources:
+  - dgljobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - qihoo.net
+  resources:
+  - dgljobs/status
+  verbs:
+  - get

@@ -1,0 +1,227 @@
+#!/bin/bash
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+
+case $key in
+    --mix-cpus-and-single-gpu)
+    MIX_CPUS_SINGLE_GPU=true
+    shift
+    ;;
+    --num-partitions)
+    PARTITIONS="$2"
+    shift
+    shift
+    ;;
+    --worksapce)
+    WORKSPACE="$2"
+    shift
+    shift
+    ;;
+    --dataset)
+    DATASET="$2"
+    shift
+    shift
+    ;;
+    --custom-dataset)
+    CUSTOM_DATASET=true
+    shift
+    ;;
+    --ignore-partition)
+    IGNORE_PARTITION=true
+    shift
+    ;;
+    --user-dataset-dir)
+    USER_DATASET_DIR="$2"
+    shift
+    shift
+    ;;
+    --launch-entry-point)
+    LAUNCH_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    --dataset-format)
+    DATASET_FORMAT="$2"
+    shift
+    shift
+    ;;
+    --dataset-files)
+    DATASET_FILES="$2"
+    shift
+    shift
+    ;;
+    --num-servers)
+    SERVERS="$2"
+    shift
+    shift
+    ;;
+    --revise-hostfile-entry-point)
+    REVISE_HOSTFILE_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    --model)
+    MODEL_NAME="$2"
+    shift
+    shift
+    ;;
+    --num-client-proc)
+    CLIENT_PROCS="$2"
+    shift
+    shift
+    ;;
+    --save-path)
+    SAVE_PATH="$2"
+    shift
+    shift
+    ;;
+    *)
+    POSITIONAL+=("$1")
+    shift
+    ;;
+esac
+done
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
+# set default value
+if [ -z ${WORKSPACE+x} ]; then WORKSPACE="/dgl_workspace"; fi
+if [ -z ${DATASET+x} ]; then DATASET="FB15k"; fi
+if [ -z ${LAUNCH_ENTRY_POINT+x} ]; then LAUNCH_ENTRY_POINT="tools/launch.py"; fi
+if [ -z ${REVISE_HOSTFILE_ENTRY_POINT+x} ]; then REVISE_HOSTFILE_ENTRY_POINT="tools/revise_hostfile.py"; fi
+if [ -z ${SERVERS+x} ]; then SERVERS="1"; fi
+if [ -z ${CLIENT_PROCS+x} ]; then CLIENT_PROCS="1"; fi
+if [ -z ${LOG_INTERVALS+x} ]; then LOG_INTERVALS="100"; fi
+if [ -z ${MODEL_NAME+x} ]; then MODEL_NAME="TransE_l2"; fi
+if [ -z ${SAVE_PATH+x} ]; then SAVE_PATH="ckpts"; fi
+
+STARTTIME=$(date +%s)
+
+if ! [ -z ${MIX_CPUS_SINGLE_GPU+x} ]
+then
+    echo "Phase: launch the single GPU training"
+    echo "----------"
+    
+    python $LAUNCH_ENTRY_POINT \
+    --ip_config "/etc/dgl/hostfile" \
+    --worker_chief_index "0" \
+    --cmd_type "exec_worker_chief" \
+    "DGLBACKEND=pytorch dglke_train --model_name $MODEL_NAME --dataset $DATASET --data_path $WORKSPACE/dataset --hidden_dim 400 --gamma 143.0 --lr 0.1 --batch_size 1024 --neg_sample_size 256 --max_step 1000 --log_interval $LOG_INTERVALS --batch_size_eval 1024 --test -adv --regularization_coef 1.00E-09 --format $DATASET_FORMAT --data_files $DATASET_FILES --gpu 0 --mix_cpu_gpu" || \
+    { echo "----------" && echo "Phase error raised";}
+    
+    PHASE1_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase finished"
+    echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+else
+    # partition on worker chief
+    echo "Phase 1/4: load and partition graph"
+    echo "----------"
+    if [ -z ${IGNORE_PARTITION+x} ] && [ -z ${CUSTOM_DATASET+x} ]
+    then
+        python $LAUNCH_ENTRY_POINT \
+        --ip_config "/etc/dgl/hostfile" \
+        --worker_chief_index "0" \
+        --cmd_type "exec_worker_chief" \
+        "DGLBACKEND=pytorch dglke_partition --dataset $DATASET -k $PARTITIONS --data_path $WORKSPACE/dataset" || \
+        { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
+    elif [ -z ${IGNORE_PARTITION+x} ] && ! [ -z ${CUSTOM_DATASET+x} ]
+    then
+        python $LAUNCH_ENTRY_POINT \
+        --ip_config "/etc/dgl/hostfile" \
+        --worker_chief_index "0" \
+        --cmd_type "exec_worker_chief" \
+        "DGLBACKEND=pytorch dglke_partition --dataset $DATASET -k $PARTITIONS --data_path $WORKSPACE/dataset --format $DATASET_FORMAT --data_files $DATASET_FILES" || \
+        { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
+    elif ! [ -z ${IGNORE_PARTITION+x} ]
+    then
+        python $LAUNCH_ENTRY_POINT \
+        --workspace $WORKSPACE \
+        --target_dir "$WORKSPACE/dataset" \
+        --ip_config "/etc/dgl/hostfile" \
+        --cmd_type "copy_batch" \
+        --source_file_paths $USER_DATASET_DIR || \
+        { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
+    fi
+    PHASE1_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 1/4 finished"
+    echo "Phase : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    # copy kubectl to worker chief
+    PHASE2_STARTTIME=$(date +%s)
+    echo "Phase 2/4: deliver kubectl and partition data"
+    echo "----------"
+    
+    python $LAUNCH_ENTRY_POINT \
+    --workspace $WORKSPACE \
+    --target_dir "/opt/kube" \
+    --ip_config "/etc/dgl/hostfile" \
+    --worker_chief_index "0" \
+    --cmd_type "copy_worker_chief" \
+    --source_file_paths "/opt/kube/kubectl" || \
+    { echo "----------" && echo "Phase 2/4 error raised" && exit 1;}
+
+    python $LAUNCH_ENTRY_POINT \
+    --ip_config "/etc/dgl/hostfile" \
+    --worker_chief_index "0" \
+    --cmd_type "exec_worker_chief" \
+    "cd $WORKSPACE && python $LAUNCH_ENTRY_POINT --workspace $WORKSPACE --target_dir $WORKSPACE/dataset --ip_config /etc/dgl/hostfile --cmd_type copy_batch --source_file_paths $WORKSPACE/dataset/$DATASET" || \
+    { echo "----------" && echo "Phase 2/4 error raised" && exit 1;}
+    
+    PHASE2_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 2/4 finished"
+    echo "Phase : $(($PHASE2_ENDTIME - $PHASE2_STARTTIME)) seconds"
+    echo "Total : $(($PHASE2_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    # batch revise hostfile
+    PHASE3_STARTTIME=$(date +%s)
+    echo "Phase 3/4: batch revise hostfile for DGLKE"
+    echo "----------"
+
+    python $LAUNCH_ENTRY_POINT \
+    --ip_config "/etc/dgl/hostfile" \
+    --cmd_type "exec_batch" \
+    "cd $WORKSPACE && python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --num_servers $SERVERS --framework DGLKE" || \
+    { echo "----------" && echo "Phase 3/4 error raised" && exit 1;}
+    
+    PHASE3_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 3/4 finished"
+    echo "Phase : $(($PHASE3_ENDTIME - $PHASE3_STARTTIME)) seconds"
+    echo "Total : $(($PHASE3_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    # train
+    PHASE4_STARTTIME=$(date +%s)
+    echo "Phase 4/4: launch the training"
+    echo "----------"
+    if [ -z ${CUSTOM_DATASET+x} ]
+    then
+        python $LAUNCH_ENTRY_POINT \
+        --ip_config "/etc/dgl/hostfile" \
+        --worker_chief_index "0" \
+        --cmd_type "exec_worker_chief" \
+        "DGLBACKEND=pytorch dglke_dist_train --path $WORKSPACE --ip_config $WORKSPACE/hostfile_revised --host_config /etc/dgl/hostfile --num_client_proc $CLIENT_PROCS --model_name $MODEL_NAME --dataset $DATASET --data_path $WORKSPACE/dataset --hidden_dim 400 --gamma 143.0 --lr 0.1 --batch_size 1024 --neg_sample_size 256 --max_step 1000 --log_interval $LOG_INTERVALS --batch_size_eval 1024 --test -adv --regularization_coef 1.00E-09 --num_servers $SERVERS --save_path $SAVE_PATH" || \
+        { echo "----------" && echo "Phase 4/4 error raised" && exit 1;}
+    else
+        python $LAUNCH_ENTRY_POINT \
+        --ip_config "/etc/dgl/hostfile" \
+        --worker_chief_index "0" \
+        --cmd_type "exec_worker_chief" \
+        "DGLBACKEND=pytorch dglke_dist_train --path $WORKSPACE --ip_config $WORKSPACE/hostfile_revised --host_config /etc/dgl/hostfile --num_client_proc $CLIENT_PROCS --model_name $MODEL_NAME --dataset $DATASET --data_path $WORKSPACE/dataset --hidden_dim 400 --gamma 143.0 --lr 0.1 --batch_size 1024 --neg_sample_size 256 --max_step 1000 --log_interval $LOG_INTERVALS --batch_size_eval 1024 --test -adv --regularization_coef 1.00E-09 --num_servers $SERVERS --format $DATASET_FORMAT --data_files $DATASET_FILES --save_path $SAVE_PATH" || \
+        { echo "----------" && echo "Phase 4/4 error raised" && exit 1;}
+    fi
+    PHASE4_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 4/4 finished"
+    echo "Phase : $(($PHASE4_ENDTIME - $PHASE4_STARTTIME)) seconds"
+    echo "Total : $(($PHASE4_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+fi

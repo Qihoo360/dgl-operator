@@ -1,0 +1,56 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgl-graphsage
+  namespace: dgl-operator
+spec:
+  cleanPodPolicy: Running
+  dglReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: dgloperator/graphsage:v0.1.0
+            name: dgl-graphsage
+            imagePullPolicy: Always
+            command:
+            - dglrun
+            args:
+            - --graph-name
+            - graphsage
+            # partition
+            - --partition-entry-point
+            - code/load_and_partition_graph.py
+            - --num-partitions
+            - "2"
+            - --balance-train
+            - --balance-edges
+            # training
+            - --train-entry-point
+            - code/train_dist.py
+            - --num-epochs
+            - "1"
+            - --batch-size
+            - "1000"
+            - --num-trainers
+            - "1"
+            - --num-samplers
+            - "4"
+            - --num-servers
+            - "1"
+    Worker:
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - image: dgloperator/graphsage:v0.1.0
+            name: dgl-graphsage
+            imagePullPolicy: Always
+            resources:
+              requests:
+                memory: "20Gi"
+                cpu: "10"
+              limits:
+                memory: "20Gi"
+                cpu: "10"
