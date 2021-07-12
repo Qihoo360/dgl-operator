@@ -42,6 +42,6 @@ kubectl create -f examples/v1alpha1/graphsage-cpu.yaml
 ## 💭 Reference
 Please check out these previous works that helped inspire the creation of DGL Operator
 
-- **[PaddleFlow/paddle-operator](https://github.com/PaddleFlow/paddle-operator/tree/dev)** - Elastic Deep Learning Training based on Kubernetes by Leveraging EDL and Volcano.
+- **[PaddleFlow/paddle-operator](https://github.com/PaddleFlow/paddle-operator)** - Elastic Deep Learning Training based on Kubernetes by Leveraging EDL and Volcano.
 
 - **[kubeflow/mpi-operator](https://github.com/kubeflow/mpi-operator)** - Kubernetes Operator for Allreduce-style Distributed Training.
