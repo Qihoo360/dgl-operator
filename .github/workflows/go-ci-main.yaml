@@ -1,0 +1,55 @@
+name: 'CI(golang): main'
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
+  pull_request:
+jobs:
+  pre_job:
+    name: Job Prerequisite
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - name: Check file changes
+        id: skip_check
+        uses: fkirc/skip-duplicate-actions@master
+        with:
+          cancel_others: true
+          paths_ignore: '["docs/**", "**/**.md"]'
+  build:
+    name: Build
+    needs: pre_job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+      - name: Setup go env
+        uses: actions/setup-go@v2
+        if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+        with:
+          go-version: '^1.16'
+      - name: Make bin
+        if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+        run: make
+  security-scan:
+    name: Security Scan
+    needs: pre_job
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2.3.4
+      - name: Run gosec security scanner of dgl-operator
+        uses: securego/gosec@master
+        if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+        with:
+          args: "-no-fail -fmt sarif -out dgl-operator.sarif -exclude-dir watcher-loop ./..."
+      - name: Upload SARIF files
+        uses: github/codeql-action/upload-sarif@v1
+        if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+        with:
+          sarif_file: dgl-operator.sarif

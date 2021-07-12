@@ -1,0 +1,43 @@
+name: 'CI(golang): watcher-loop'
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
+  pull_request:
+defaults:
+  run:
+    working-directory: ./watcher-loop
+jobs:
+  pre_job:
+    name: Job Prerequisite
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - name: Check file changes
+        id: skip_check
+        uses: fkirc/skip-duplicate-actions@master
+        with:
+          cancel_others: true
+          paths_ignore: '["docs/**", "**/**.md"]'
+  security-scan:
+    name: Security Scan
+    needs: pre_job
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2.3.4
+      - name: Run gosec security scanner of watcher-loop
+        uses: securego/gosec@master
+        if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+        with:
+          args: "-no-fail -fmt sarif -out watcher-loop.sarif ./..."
+      - name: Upload SARIF files
+        uses: github/codeql-action/upload-sarif@v1
+        if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+        with:
+          sarif_file: watcher-loop.sarif
