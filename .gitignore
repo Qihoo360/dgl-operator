@@ -1,10 +1,11 @@
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-bin/
+bin
 testbin/*
 
 # Test binary, build with `go test -c`
@@ -18,8 +19,8 @@ testbin/*
 !vendor/**/zz_generated.*
 
 # editor and IDE paraphernalia
-.idea/
-.vscode/
+.idea
+.vscode
 *.swp
 *.swo
 *~

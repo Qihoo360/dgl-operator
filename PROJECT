@@ -1,7 +1,16 @@
 domain: qihoo.net
+layout:
+- go.kubebuilder.io/v3
+projectName: dgl-operator
 repo: github.com/Qihoo360/dgl-operator
 resources:
-- group: dgljob
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: qihoo.net
+  group: dgljob
   kind: DGLJob
+  path: github.com/Qihoo360/dgl-operator/api/v1alpha1
   version: v1alpha1
-version: "2"
+version: "3"

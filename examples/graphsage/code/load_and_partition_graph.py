@@ -22,11 +22,10 @@ def makedirs(path):
         if e.errno != errno.EEXIST and os.path.isdir(path):
             raise e
 
-def load_ogb(name, work_dir):
+def load_dataset(name, work_dir, url):
     from ogb.nodeproppred import DglNodePropPredDataset
-    
-    dataset_s3 = os.getenv('DATASET_S3')
-    download_url(dataset_s3, work_dir)
+
+    download_url(url, work_dir)
     extract_zip(f'{work_dir}/ogbn_products.zip', work_dir)
     os.remove(f'{work_dir}/ogbn_products.zip')
     
@@ -98,12 +97,14 @@ if __name__ == '__main__':
                            help='graph_name: ogb-product')
     argparser.add_argument('--rel_data_path', type=str, required=True,
                            help='Relative dataset path in workspace')
+    argparser.add_argument('--dataset_url', type=str, required=True,
+                           help='Dataset url')
     args = argparser.parse_args()
     args.output = f'{args.workspace}/{args.rel_data_path}'
     print(f'Partition arguments: {args}')
     
     start = time.time()
-    g, _ = load_ogb('ogbn-products', args.output)
+    g, _ = load_dataset('ogbn-products', args.output, args.dataset_url)
     print('load \'ogbn-products\' takes {:.3f} seconds'.format(time.time() - start))
     print('|V|={}, |E|={}'.format(g.number_of_nodes(), g.number_of_edges()))
     print('train: {}, valid: {}, test: {}'.format(th.sum(g.ndata['train_mask']),

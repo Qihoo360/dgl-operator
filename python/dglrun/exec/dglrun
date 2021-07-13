@@ -91,6 +91,11 @@ case $key in
     shift
     shift
     ;;
+    --dataset-url)
+    DATASET_URL="$2"
+    shift
+    shift
+    ;;
     *)
     POSITIONAL+=("$1")
     shift
@@ -122,6 +127,7 @@ then
     --workspace $WORKSPACE \
     --rel_data_path "dataset" \
     --num_parts $PARTITIONS \
+    --dataset_url $DATASET_URL \
     $BALANCE_TRAIN \
     $BALANCE_EDGES || \
     { echo "----------" && echo "Phase 1/5 error raised" && exit 1;}
