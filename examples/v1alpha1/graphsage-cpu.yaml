@@ -26,6 +26,8 @@ spec:
             - "2"
             - --balance-train
             - --balance-edges
+            - --dataset-url
+            - http://snap.stanford.edu/ogb/data/nodeproppred/products.zip
             # training
             - --train-entry-point
             - code/train_dist.py

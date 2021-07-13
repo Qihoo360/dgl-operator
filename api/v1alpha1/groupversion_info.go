@@ -1,5 +1,5 @@
 /*
-
+Copyright 2021.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // Package v1alpha1 contains API Schema definitions for the dgljob v1alpha1 API group
-// +kubebuilder:object:generate=true
-// +groupName=qihoo.net
+//+kubebuilder:object:generate=true
+//+groupName=qihoo.net
 package v1alpha1
 
 import (
@@ -27,9 +27,6 @@ import (
 var (
 	// GroupVersion is group version used to register these objects
 	GroupVersion = schema.GroupVersion{Group: "qihoo.net", Version: "v1alpha1"}
-
-	// GroupVersionKind is group version kind used to register these objects
-	GroupVersionKind = schema.GroupVersionKind{Group: "qihoo.net", Version: "v1alpha1", Kind: Kind}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}

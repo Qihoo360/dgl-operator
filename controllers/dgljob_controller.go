@@ -1,5 +1,5 @@
 /*
-
+Copyright 2021.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -95,15 +95,12 @@ type DGLJobReconciler struct {
 	KubectlDownloadImage string
 }
 
-// +kubebuilder:rbac:groups=qihoo.net,resources=dgljobs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=qihoo.net,resources=dgljobs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=qihoo.net,resources=dgljobs/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=pods/status,verbs=get
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=services/status,verbs=get
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=configmaps/status,verbs=get
+//+kubebuilder:rbac:groups=qihoo.net,resources=dgljobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=qihoo.net,resources=dgljobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=qihoo.net,resources=dgljobs/finalizers,verbs=update
+
+// Reconcile is part of the main kubernetes reconciliation loop which aims to
+// move the current state of the cluster closer to the desired state.
 func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("dgljob", req.NamespacedName)
 
