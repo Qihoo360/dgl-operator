@@ -6740,6 +6740,11 @@ spec:
                 description: DGLReplicaSpecs describes the spec of launcher or worker
                   base on pod template
                 type: object
+              partitionMode:
+                default: DGL-API
+                description: PartitionMode defines the policy how to partition. Defaults
+                  to DGL-API.
+                type: string
               slotsPerWorker:
                 type: integer
             required:

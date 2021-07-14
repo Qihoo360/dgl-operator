@@ -138,7 +138,9 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{}, err
 			}
 			initializeDGLJobStatus(&dgljob, dglv1a1.WorkerReplica)
-			initializeDGLJobStatus(&dgljob, dglv1a1.PartitionerReplica)
+			if isPartitionModeDGLAPI(&dgljob) {
+				initializeDGLJobStatus(&dgljob, dglv1a1.PartitionerReplica)
+			}
 		}
 		if isJobFailed(dgljob.Status) && (isJobEvicted(dgljob.Status) || dgljob.Status.CompletionTime == nil) {
 			requeue = true
@@ -152,7 +154,9 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 			initializeDGLJobStatus(&dgljob, dglv1a1.WorkerReplica)
 			initializeDGLJobStatus(&dgljob, dglv1a1.LauncherReplica)
-			initializeDGLJobStatus(&dgljob, dglv1a1.PartitionerReplica)
+			if isPartitionModeDGLAPI(&dgljob) {
+				initializeDGLJobStatus(&dgljob, dglv1a1.PartitionerReplica)
+			}
 			return ctrl.Result{}, nil
 		} else {
 			launcher, err := r.getLauncherPod(ctx, &dgljob)
@@ -173,12 +177,14 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		dgljob.Status.StartTime = &now
 	}
 
-	partitionerSpec := dgljob.Spec.DGLReplicaSpecs[dglv1a1.PartitionerReplica]
-	if partitionerSpec == nil {
-		replicas := 1
-		replicaSpec := &dglv1a1.ReplicaSpec{}
-		replicaSpec.Replicas = &replicas
-		dgljob.Spec.DGLReplicaSpecs[dglv1a1.PartitionerReplica] = replicaSpec
+	if isPartitionModeDGLAPI(&dgljob) {
+		partitionerSpec := dgljob.Spec.DGLReplicaSpecs[dglv1a1.PartitionerReplica]
+		if partitionerSpec == nil {
+			replicas := 1
+			replicaSpec := &dglv1a1.ReplicaSpec{}
+			replicaSpec.Replicas = &replicas
+			dgljob.Spec.DGLReplicaSpecs[dglv1a1.PartitionerReplica] = replicaSpec
+		}
 	}
 
 	// Get the launcher Pod for this DGLJob
@@ -214,24 +220,8 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 
-		// Get the partitioner ServiceAccount for this DGLJob.
-		sa, err = r.getOrCreatePartitionerServiceAccount(&dgljob)
-		if sa == nil && err == nil {
-			return ctrl.Result{Requeue: true}, nil
-		} else if err != nil {
-			return ctrl.Result{}, err
-		}
-
 		// Get the launcher Role for this DGLJob.
 		role, err := r.getOrCreateLauncherRole(&dgljob, workerReplicas)
-		if role == nil && err == nil {
-			return ctrl.Result{Requeue: true}, nil
-		} else if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		// Get the partitioner Role for this DGLJob.
-		role, err = r.getOrCreatePartitionerRole(&dgljob, workerReplicas)
 		if role == nil && err == nil {
 			return ctrl.Result{Requeue: true}, nil
 		} else if err != nil {
@@ -246,12 +236,30 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 
-		// Get the partitioner RoleBinding for this DGLJob.
-		rb, err = r.getOrCreatePartitionerRoleBinding(&dgljob)
-		if rb == nil && err == nil {
-			return ctrl.Result{Requeue: true}, nil
-		} else if err != nil {
-			return ctrl.Result{}, err
+		if isPartitionModeDGLAPI(&dgljob) {
+			// Get the partitioner ServiceAccount for this DGLJob.
+			sa, err = r.getOrCreatePartitionerServiceAccount(&dgljob)
+			if sa == nil && err == nil {
+				return ctrl.Result{Requeue: true}, nil
+			} else if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// Get the partitioner Role for this DGLJob.
+			role, err = r.getOrCreatePartitionerRole(&dgljob, workerReplicas)
+			if role == nil && err == nil {
+				return ctrl.Result{Requeue: true}, nil
+			} else if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// Get the partitioner RoleBinding for this DGLJob.
+			rb, err = r.getOrCreatePartitionerRoleBinding(&dgljob)
+			if rb == nil && err == nil {
+				return ctrl.Result{Requeue: true}, nil
+			} else if err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 
 		// TODO(ryantd): Support Pod Group
@@ -263,9 +271,11 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 	}
-	partitioners, err = r.getOrCreatePartitioners(&dgljob)
-	if err != nil {
-		return ctrl.Result{}, err
+	if isPartitionModeDGLAPI(&dgljob) {
+		partitioners, err = r.getOrCreatePartitioners(&dgljob)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if dgljob.Status.Phase == dglv1a1.Partitioned ||
@@ -1077,29 +1087,7 @@ func buildLauncherPod(dgljob *dglv1a1.DGLJob, name string, WatcherLoopImage stri
 			},
 		},
 	}
-	// PartitionCollectorContainer := corev1.Container{
-	// 	Name:            partitionCollectName,
-	// 	Image:           podSpec.Spec.Containers[0].Image,
-	// 	ImagePullPolicy: corev1.PullAlways,
-	// 	Env: []corev1.EnvVar{
-	// 		{
-	// 			Name:  phaseEnv,
-	// 			Value: "Partition-collector",
-	// 		},
-	// 	},
-	// 	Command: podSpec.Spec.Containers[0].Command,
-	// 	Args:    podSpec.Spec.Containers[0].Args,
-	// 	VolumeMounts: []corev1.VolumeMount{
-	// 		{
-	// 			Name:      kubectlVolumeName,
-	// 			MountPath: kubectlMountPath,
-	// 		},
-	// 		{
-	// 			Name:      configVolumeName,
-	// 			MountPath: configMountPath,
-	// 		},
-	// 	},
-	// }
+
 	WorkersWatcherContainer := corev1.Container{
 		Name:            workerWatcherName,
 		Image:           WatcherLoopImage,
@@ -1141,7 +1129,6 @@ func buildLauncherPod(dgljob *dglv1a1.DGLJob, name string, WatcherLoopImage stri
 		podSpec.Spec.InitContainers,
 		kubectlDownloadContainer,
 		PartitionWatcherContainer,
-		// PartitionCollectorContainer,
 		WorkersWatcherContainer)
 
 	// Main Containers
@@ -1499,6 +1486,10 @@ func isCleanUpPods(cleanPodPolicy *dglv1a1.CleanPodPolicy) bool {
 		return true
 	}
 	return false
+}
+
+func isPartitionModeDGLAPI(dgljob *dglv1a1.DGLJob) bool {
+	return *dgljob.Spec.PartitionMode == dglv1a1.PartitionModeDGLAPI
 }
 
 func initializeDGLJobStatus(dgljob *dglv1a1.DGLJob, rType dglv1a1.ReplicaType) {
