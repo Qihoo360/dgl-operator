@@ -57,8 +57,8 @@ const (
 	PartitionModeDGLAPI PartitionMode = "DGL-API"
 	// PartitionModeParMETIS will partition in a fully distributed manner
 	PartitionModeParMETIS PartitionMode = "ParMETIS"
-	// PartitionModeNone will skip the partitioning
-	PartitionModeNone PartitionMode = "Skip"
+	// PartitionModeSkip will skip the partitioning
+	PartitionModeSkip PartitionMode = "Skip"
 )
 
 // CleanPodPolicy describes how to deal with pods when the job is finished

@@ -1,0 +1,21 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgl-node-classification
+  namespace: dgl-operator
+spec:
+  partitionMode: Skip # skip partitioning on using dgl.data
+  dglReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: dgloperator/node-classification:v0.1.0
+            name: node-classification
+            imagePullPolicy: Always
+            command:
+            - dglrun
+            args:
+            - --train-entry-point
+            - code/1_introduction.py

@@ -116,7 +116,21 @@ if [ -z ${REVISE_HOSTFILE_ENTRY_POINT+x} ]; then REVISE_HOSTFILE_ENTRY_POINT="to
 
 STARTTIME=$(date +%s)
 
-if ! [ -z ${DGL_OPERATOR_PHASE_ENV+x} ] && [ $DGL_OPERATOR_PHASE_ENV = "Partitioner" ]
+if ! [ -z ${DGL_OPERATOR_PHASE_ENV+x} ] && [ $DGL_OPERATOR_PHASE_ENV = "Launcher_Workload" ]
+then
+    echo "Phase 1/1: launch the training"
+    echo "----------"
+
+    python $TRAIN_ENTRY_POINT || \
+    { echo "----------" && echo "Phase 1/1 error raised" && exit 1;}
+
+    PHASE1_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 1/1 finished"
+    echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+elif ! [ -z ${DGL_OPERATOR_PHASE_ENV+x} ] && [ $DGL_OPERATOR_PHASE_ENV = "Partitioner" ]
 then
     # partition on partitioner
     echo "Phase 1/5: load and partition graph"

@@ -1034,194 +1034,215 @@ func buildLauncherPod(dgljob *dglv1a1.DGLJob, name string, WatcherLoopImage stri
 
 	podSpec.Spec.RestartPolicy = "Never"
 
-	// InitContainers
-	kubectlDownloadContainer := corev1.Container{
-		Name:            kubectlDownloadName,
-		Image:           KubectlDownloadImage,
-		ImagePullPolicy: corev1.PullAlways,
-		VolumeMounts: []corev1.VolumeMount{
-			{
+	if isPartitionModeDGLAPI(dgljob) {
+		// InitContainers
+		kubectlDownloadContainer := corev1.Container{
+			Name:            kubectlDownloadName,
+			Image:           KubectlDownloadImage,
+			ImagePullPolicy: corev1.PullAlways,
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      kubectlVolumeName,
+					MountPath: kubectlMountPath,
+				},
+			},
+		}
+		PartitionWatcherContainer := corev1.Container{
+			Name:            partitionerWatcherName,
+			Image:           WatcherLoopImage,
+			ImagePullPolicy: corev1.PullAlways,
+			Env: []corev1.EnvVar{
+				{
+					Name:  "NAMESPACE",
+					Value: dgljob.Namespace,
+				},
+				{
+					Name:  "WATCHERFILE",
+					Value: fmt.Sprintf("%s/%s", configMountPath, partfileName),
+				},
+				{
+					Name:  "WATCHERMODE",
+					Value: "finished",
+				},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      configVolumeName,
+					MountPath: configMountPath,
+				},
+				{
+					Name:      datasetVolumeName,
+					MountPath: datasetMountPath,
+				},
+			},
+			Resources: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
+					corev1.ResourceMemory:           resource.MustParse(initContainerMem),
+					corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
+					corev1.ResourceMemory:           resource.MustParse(initContainerMem),
+					corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
+				},
+			},
+		}
+
+		WorkersWatcherContainer := corev1.Container{
+			Name:            workerWatcherName,
+			Image:           WatcherLoopImage,
+			ImagePullPolicy: corev1.PullAlways,
+			Env: []corev1.EnvVar{
+				{
+					Name:  "NAMESPACE",
+					Value: dgljob.Namespace,
+				},
+				{
+					Name:  "WATCHERFILE",
+					Value: fmt.Sprintf("%s/%s", configMountPath, hostfileName),
+				},
+				{
+					Name:  "WATCHERMODE",
+					Value: "ready",
+				},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      configVolumeName,
+					MountPath: configMountPath,
+				},
+			},
+			Resources: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
+					corev1.ResourceMemory:           resource.MustParse(initContainerMem),
+					corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
+					corev1.ResourceMemory:           resource.MustParse(initContainerMem),
+					corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
+				},
+			},
+		}
+		podSpec.Spec.InitContainers = append(
+			podSpec.Spec.InitContainers,
+			kubectlDownloadContainer,
+			PartitionWatcherContainer,
+			WorkersWatcherContainer)
+
+		// Main Containers
+		container := podSpec.Spec.Containers[0]
+		container.Env = append(container.Env,
+			corev1.EnvVar{
+				Name:  kubexecPathEnv,
+				Value: fmt.Sprintf("%s/%s", configMountPath, kubexecScriptName),
+			},
+			corev1.EnvVar{
+				Name:  hostfilePathEnv,
+				Value: fmt.Sprintf("%s/%s", configMountPath, hostfileName),
+			},
+			corev1.EnvVar{
+				Name:  kubectlPathEnv,
+				Value: fmt.Sprintf("%s/%s", kubectlMountPath, kubectlName),
+			},
+			corev1.EnvVar{
+				Name:  kubeEnv,
+				Value: "1",
+			})
+
+		container.VolumeMounts = append(container.VolumeMounts,
+			corev1.VolumeMount{
 				Name:      kubectlVolumeName,
 				MountPath: kubectlMountPath,
 			},
-		},
-	}
-	PartitionWatcherContainer := corev1.Container{
-		Name:            partitionerWatcherName,
-		Image:           WatcherLoopImage,
-		ImagePullPolicy: corev1.PullAlways,
-		Env: []corev1.EnvVar{
-			{
-				Name:  "NAMESPACE",
-				Value: dgljob.Namespace,
-			},
-			{
-				Name:  "WATCHERFILE",
-				Value: fmt.Sprintf("%s/%s", configMountPath, partfileName),
-			},
-			{
-				Name:  "WATCHERMODE",
-				Value: "finished",
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
+			corev1.VolumeMount{
 				Name:      configVolumeName,
 				MountPath: configMountPath,
 			},
-			{
+			corev1.VolumeMount{
 				Name:      datasetVolumeName,
 				MountPath: datasetMountPath,
-			},
-		},
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
-				corev1.ResourceMemory:           resource.MustParse(initContainerMem),
-				corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
-				corev1.ResourceMemory:           resource.MustParse(initContainerMem),
-				corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
-			},
-		},
-	}
-
-	WorkersWatcherContainer := corev1.Container{
-		Name:            workerWatcherName,
-		Image:           WatcherLoopImage,
-		ImagePullPolicy: corev1.PullAlways,
-		Env: []corev1.EnvVar{
-			{
-				Name:  "NAMESPACE",
-				Value: dgljob.Namespace,
-			},
-			{
-				Name:  "WATCHERFILE",
-				Value: fmt.Sprintf("%s/%s", configMountPath, hostfileName),
-			},
-			{
-				Name:  "WATCHERMODE",
-				Value: "ready",
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      configVolumeName,
-				MountPath: configMountPath,
-			},
-		},
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
-				corev1.ResourceMemory:           resource.MustParse(initContainerMem),
-				corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:              resource.MustParse(initContainerCpu),
-				corev1.ResourceMemory:           resource.MustParse(initContainerMem),
-				corev1.ResourceEphemeralStorage: resource.MustParse(initContainerEphStorage),
-			},
-		},
-	}
-	podSpec.Spec.InitContainers = append(
-		podSpec.Spec.InitContainers,
-		kubectlDownloadContainer,
-		PartitionWatcherContainer,
-		WorkersWatcherContainer)
-
-	// Main Containers
-	container := podSpec.Spec.Containers[0]
-	container.Env = append(container.Env,
-		corev1.EnvVar{
-			Name:  kubexecPathEnv,
-			Value: fmt.Sprintf("%s/%s", configMountPath, kubexecScriptName),
-		},
-		corev1.EnvVar{
-			Name:  hostfilePathEnv,
-			Value: fmt.Sprintf("%s/%s", configMountPath, hostfileName),
-		},
-		corev1.EnvVar{
-			Name:  kubectlPathEnv,
-			Value: fmt.Sprintf("%s/%s", kubectlMountPath, kubectlName),
-		},
-		corev1.EnvVar{
-			Name:  kubeEnv,
-			Value: "1",
-		})
-
-	container.VolumeMounts = append(container.VolumeMounts,
-		corev1.VolumeMount{
-			Name:      kubectlVolumeName,
-			MountPath: kubectlMountPath,
-		},
-		corev1.VolumeMount{
-			Name:      configVolumeName,
-			MountPath: configMountPath,
-		},
-		corev1.VolumeMount{
-			Name:      datasetVolumeName,
-			MountPath: datasetMountPath,
-		})
-	if container.Resources.Size() == 0 {
-		container.Resources = corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse(defaultLauncherContainerCpu),
-				corev1.ResourceMemory: resource.MustParse(defaultLauncherContainerMem),
-			},
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse(defaultLauncherContainerCpu),
-				corev1.ResourceMemory: resource.MustParse(defaultLauncherContainerMem),
-			},
+			})
+		if container.Resources.Size() == 0 {
+			container.Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(defaultLauncherContainerCpu),
+					corev1.ResourceMemory: resource.MustParse(defaultLauncherContainerMem),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(defaultLauncherContainerCpu),
+					corev1.ResourceMemory: resource.MustParse(defaultLauncherContainerMem),
+				},
+			}
 		}
-	}
-	podSpec.Spec.Containers[0] = container
-	podSpec.Spec.ServiceAccountName = name
+		podSpec.Spec.Containers[0] = container
+		podSpec.Spec.ServiceAccountName = name
 
-	scriptsMode := int32(0555)
-	hostfileMode := int32(0444)
-	partfileMode := int32(0444)
-	podSpec.Spec.Volumes = append(podSpec.Spec.Volumes,
-		corev1.Volume{
-			Name: kubectlVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+		scriptsMode := int32(0555)
+		hostfileMode := int32(0444)
+		partfileMode := int32(0444)
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes,
+			corev1.Volume{
+				Name: kubectlVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
 			},
-		},
-		corev1.Volume{
-			Name: datasetVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			corev1.Volume{
+				Name: datasetVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
 			},
-		},
-		corev1.Volume{
-			Name: configVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: dgljob.Name + configSuffix,
-					},
-					Items: []corev1.KeyToPath{
-						{
-							Key:  kubexecScriptName,
-							Path: kubexecScriptName,
-							Mode: &scriptsMode,
+			corev1.Volume{
+				Name: configVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: dgljob.Name + configSuffix,
 						},
-						{
-							Key:  hostfileName,
-							Path: hostfileName,
-							Mode: &hostfileMode,
-						},
-						{
-							Key:  partfileName,
-							Path: partfileName,
-							Mode: &partfileMode,
+						Items: []corev1.KeyToPath{
+							{
+								Key:  kubexecScriptName,
+								Path: kubexecScriptName,
+								Mode: &scriptsMode,
+							},
+							{
+								Key:  hostfileName,
+								Path: hostfileName,
+								Mode: &hostfileMode,
+							},
+							{
+								Key:  partfileName,
+								Path: partfileName,
+								Mode: &partfileMode,
+							},
 						},
 					},
 				},
-			},
-		})
+			})
+	} else if isPartitionModeSkip(dgljob) {
+		podSpec.Spec.Containers[0].Env = append(podSpec.Spec.Containers[0].Env,
+			corev1.EnvVar{
+				Name:  phaseEnv,
+				Value: "Launcher_Workload",
+			})
+
+		if podSpec.Spec.Containers[0].Resources.Size() == 0 {
+			podSpec.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(defaultLauncherContainerCpu),
+					corev1.ResourceMemory: resource.MustParse(defaultLauncherContainerMem),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(defaultLauncherContainerCpu),
+					corev1.ResourceMemory: resource.MustParse(defaultLauncherContainerMem),
+				},
+			}
+		}
+	}
 
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1490,6 +1511,10 @@ func isCleanUpPods(cleanPodPolicy *dglv1a1.CleanPodPolicy) bool {
 
 func isPartitionModeDGLAPI(dgljob *dglv1a1.DGLJob) bool {
 	return *dgljob.Spec.PartitionMode == dglv1a1.PartitionModeDGLAPI
+}
+
+func isPartitionModeSkip(dgljob *dglv1a1.DGLJob) bool {
+	return *dgljob.Spec.PartitionMode == dglv1a1.PartitionModeSkip
 }
 
 func initializeDGLJobStatus(dgljob *dglv1a1.DGLJob, rType dglv1a1.ReplicaType) {
