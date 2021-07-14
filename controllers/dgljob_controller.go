@@ -118,12 +118,6 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// we can get them on deleted requests.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	// TODO(ryantd): use RegisterDefaults or upgrade apiVersion to v1
-	// Set default for the job
-	if dgljob.Spec.CleanPodPolicy == nil {
-		none := dglv1a1.CleanPodPolicyNone
-		dgljob.Spec.CleanPodPolicy = &none
-	}
 
 	// TODO(ryantd): specify the reconfile log
 	log.Info("Reconcile", "version", dgljob.ResourceVersion)

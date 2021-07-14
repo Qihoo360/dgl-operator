@@ -103,6 +103,7 @@ type DGLJobSpec struct {
 	SlotsPerWorker *int `json:"slotsPerWorker,omitempty"`
 
 	// CleanPodPolicy defines the policy that whether to kill pods after the job completes. Defaults to None.
+	// +kubebuilder:default:=Running
 	CleanPodPolicy *CleanPodPolicy `json:"cleanPodPolicy,omitempty"`
 
 	// DGLReplicaSpecs describes the spec of launcher or worker base on pod template
