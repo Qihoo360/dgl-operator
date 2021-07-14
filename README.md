@@ -28,16 +28,25 @@ dgljobs.qihoo.net                          1m
 ```
 
 ## 🔬Creating a DGL Job
-You can create a DGL job by defining an DGLJob config file. See [graphsage-cpu.yaml](https://github.com/Qihoo360/dgl-operator/blob/master/examples/v1alpha1/graphsage-cpu.yaml) example config file for launching a multi-node GraphSAGE training job. You may change the config file based on your requirements.
+You can create a DGL job by defining an DGLJob config file. See [GraphSAGE.yaml](https://github.com/Qihoo360/dgl-operator/blob/master/examples/v1alpha1/GraphSAGE.yaml) or [GraphSAGE_dist.yaml](https://github.com/Qihoo360/dgl-operator/blob/master/examples/v1alpha1/GraphSAGE_dist.yaml) example config file for launching a __single-node__ or __multi-node__ GraphSAGE training job. You may change the config file based on your requirements.
 
-```
-cat examples/v1alpha1/graphsage-cpu.yaml
+```bash
+cat examples/v1alpha1/GraphSAGE.yaml
+# or
+cat examples/v1alpha1/GraphSAGE_dist.yaml
 ```
 
 Deploy the DGLJob resource to start training:
+```bash
+kubectl create -f examples/v1alpha1/GraphSAGE.yaml
+# or
+kubectl create -f examples/v1alpha1/GraphSAGE_dist.yaml
 ```
-kubectl create -f examples/v1alpha1/graphsage-cpu.yaml
-```
+
+### And more ...
+You can also try more dgl.ai tutorials thru DGL Operator, like
+- [node_classification.yaml](https://github.com/Qihoo360/dgl-operator/blob/master/examples/v1alpha1/node_classification.yaml) to recap [Node Classification with DGL](https://docs.dgl.ai/tutorials/blitz/1_introduction.html)
+- [GraphSAGE.yaml](https://github.com/Qihoo360/dgl-operator/blob/master/examples/v1alpha1/GraphSAGE.yaml) to recap [Write your own GNN module](https://docs.dgl.ai/tutorials/blitz/3_message_passing.html)
 
 ## 💭 Reference
 Please check out these previous works that helped inspire the creation of DGL Operator
