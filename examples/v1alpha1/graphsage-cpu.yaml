@@ -4,6 +4,7 @@ metadata:
   name: dgl-graphsage
   namespace: dgl-operator
 spec:
+  partitionMode: DGL-API
   cleanPodPolicy: Running
   dglReplicaSpecs:
     Launcher:

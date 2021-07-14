@@ -49,6 +49,18 @@ const (
 	Succeed      JobPhase = "Succeed"
 )
 
+// PartitionMode describes how to deal with the partitioning
+type PartitionMode string
+
+const (
+	// PartitionModeDGLAPI will partition standalone
+	PartitionModeDGLAPI PartitionMode = "DGL-API"
+	// PartitionModeParMETIS will partition in a fully distributed manner
+	PartitionModeParMETIS PartitionMode = "ParMETIS"
+	// PartitionModeNone will skip the partitioning
+	PartitionModeNone PartitionMode = "Skip"
+)
+
 // CleanPodPolicy describes how to deal with pods when the job is finished
 type CleanPodPolicy string
 
@@ -101,6 +113,10 @@ type DGLJobSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	SlotsPerWorker *int `json:"slotsPerWorker,omitempty"`
+
+	// PartitionMode defines the policy how to partition. Defaults to DGL-API.
+	// +kubebuilder:default:=DGL-API
+	PartitionMode *PartitionMode `json:"partitionMode,omitempty"`
 
 	// CleanPodPolicy defines the policy that whether to kill pods after the job completes. Defaults to None.
 	// +kubebuilder:default:=Running
