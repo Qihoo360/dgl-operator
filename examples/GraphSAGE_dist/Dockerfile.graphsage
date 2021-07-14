@@ -4,7 +4,7 @@ RUN mkdir /dgl_workspace
 WORKDIR /dgl_workspace
 
 # build the Dockerfile from the root directory
-COPY examples/GraphSAGE/code code
+COPY examples/GraphSAGE_dist/code code
 COPY python/dglrun base
 
 RUN mv base/tools tools
