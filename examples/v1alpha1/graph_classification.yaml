@@ -1,0 +1,21 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgl-graph-classification
+  namespace: dgl-operator
+spec:
+  partitionMode: Skip # skip partitioning on using dgl.data
+  dglReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: dgloperator/graph-classification:v0.1.0
+            name: graph-classification
+            imagePullPolicy: Always
+            command:
+            - dglrun
+            args:
+            - --train-entry-point
+            - code/5_graph_classification.py

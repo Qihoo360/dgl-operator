@@ -1,0 +1,21 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgl-link-predict
+  namespace: dgl-operator
+spec:
+  partitionMode: Skip # skip partitioning on using dgl.data
+  dglReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: dgloperator/link-predict:v0.1.0
+            name: link-predict
+            imagePullPolicy: Always
+            command:
+            - dglrun
+            args:
+            - --train-entry-point
+            - code/4_link_predict.py
