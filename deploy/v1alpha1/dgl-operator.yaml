@@ -44,6 +44,7 @@ spec:
             description: DGLJobSpec defines the desired state of DGLJob
             properties:
               cleanPodPolicy:
+                default: Running
                 description: CleanPodPolicy defines the policy that whether to kill
                   pods after the job completes. Defaults to None.
                 type: string
