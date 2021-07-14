@@ -1,0 +1,21 @@
+apiVersion: qihoo.net/v1alpha1
+kind: DGLJob
+metadata:
+  name: dgl-graphsage
+  namespace: dgl-operator
+spec:
+  partitionMode: Skip # skip partitioning on using dgl.data
+  dglReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - image: dgloperator/dgl-graphsage:v0.1.0
+            name: dgl-graphsage
+            imagePullPolicy: Always
+            command:
+            - dglrun
+            args:
+            - --train-entry-point
+            - code/3_message_passing.py
