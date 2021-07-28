@@ -6964,11 +6964,11 @@ spec:
       serviceAccountName: dgl-operator
       containers:
       - name: dgl-operator
-        image: dgloperator/dgl-operator:v0.1.0
+        image: dgloperator/dgl-operator:latest
         imagePullPolicy: Always
         args: [
           "--watcher-loop-image",
-          "dgloperator/watcher-loop:v0.1.0",
+          "dgloperator/watcher-loop:latest",
           "--kubectl-download-image",
-          "dgloperator/kubectl-download:v0.1.0",
+          "dgloperator/kubectl-download:latest",
         ]
