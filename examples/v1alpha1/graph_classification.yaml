@@ -11,7 +11,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/graph-classification:v0.1.0
+          - image: dgloperator/examples:graph-classification
             name: graph-classification
             imagePullPolicy: Always
             command:

@@ -11,7 +11,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/link-predict:v0.1.0
+          - image: dgloperator/examples:link-predict
             name: link-predict
             imagePullPolicy: Always
             command:

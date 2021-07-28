@@ -12,7 +12,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/graphsage-dist:v0.1.0
+          - image: dgloperator/examples:graphsage-dist
             name: dgl-graphsage
             imagePullPolicy: Always
             command:
@@ -47,7 +47,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/graphsage-dist:v0.1.0
+          - image: dgloperator/examples:graphsage-dist
             name: dgl-graphsage
             imagePullPolicy: Always
             resources:
