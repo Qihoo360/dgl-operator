@@ -11,7 +11,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/dglke-base:v0.1.0
+          - image: dgloperator/dglke-base:latest
             name: dgl-complex
             imagePullPolicy: Always
             command:
@@ -28,7 +28,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/dglke-base:v0.1.0
+          - image: dgloperator/dglke-base:latest
             name: dgl-complex
             imagePullPolicy: Always
             resources:

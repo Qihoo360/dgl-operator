@@ -11,7 +11,7 @@ spec:
       template:
         spec:
           containers:
-          - image: dgloperator/dgl-graphsage:v0.1.0
+          - image: dgloperator/examples:graphsage
             name: dgl-graphsage
             imagePullPolicy: Always
             command:
