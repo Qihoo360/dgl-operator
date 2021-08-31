@@ -52,6 +52,21 @@ case $key in
     shift
     shift
     ;;
+    --dispatch-entry-point)
+    DISPATCH_ENTRY_POINT="$2"
+    shift
+    shift
+    ;;
+    --partition-config-path)
+    LAUNCHER_CONFIG_PATH="$2"
+    shift
+    shift
+    ;;
+    --pvc-partitioned-dir)
+    PVC_PARTITIONED_DIR="$2"
+    shift
+    shift
+    ;;
     --num-servers)
     SERVERS="$2"
     shift
@@ -89,139 +104,240 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 if [ -z ${WORKSPACE+x} ]; then WORKSPACE="/dgl_workspace"; fi
 if [ -z ${DATASET+x} ]; then DATASET="FB15k"; fi
 if [ -z ${LAUNCH_ENTRY_POINT+x} ]; then LAUNCH_ENTRY_POINT="tools/launch.py"; fi
+if [ -z ${DISPATCH_ENTRY_POINT+x} ]; then DISPATCH_ENTRY_POINT="tools/dispatch.py"; fi
 if [ -z ${REVISE_HOSTFILE_ENTRY_POINT+x} ]; then REVISE_HOSTFILE_ENTRY_POINT="tools/revise_hostfile.py"; fi
 if [ -z ${SERVERS+x} ]; then SERVERS="1"; fi
 if [ -z ${CLIENT_PROCS+x} ]; then CLIENT_PROCS="1"; fi
 if [ -z ${LOG_INTERVALS+x} ]; then LOG_INTERVALS="100"; fi
-if [ -z ${MODEL_NAME+x} ]; then MODEL_NAME="TransE_l2"; fi
+if [ -z ${MODEL_NAME+x} ]; then MODEL_NAME="ComplEx"; fi
 if [ -z ${SAVE_PATH+x} ]; then SAVE_PATH="ckpts"; fi
+if [ -z ${LAUNCHER_CONFIG_PATH+x} ]; then LAUNCHER_CONFIG_PATH="$WORKSPACE/dataset/$DATASET.json"; fi
 
 STARTTIME=$(date +%s)
 
-if ! [ -z ${MIX_CPUS_SINGLE_GPU+x} ]
+# launcher instant training workload
+if ! [ -z ${DGL_OPERATOR_PHASE_ENV+x} ] && [ $DGL_OPERATOR_PHASE_ENV = "Launcher_Workload" ]
 then
-    echo "Phase: launch the single GPU training"
+    echo "Phase 1/1: launch the training"
     echo "----------"
-    
-    python $LAUNCH_ENTRY_POINT \
-    --ip_config "/etc/dgl/hostfile" \
-    --worker_chief_index "0" \
-    --cmd_type "exec_worker_chief" \
-    "DGLBACKEND=pytorch dglke_train --model_name $MODEL_NAME --dataset $DATASET --data_path $WORKSPACE/dataset --hidden_dim 400 --gamma 143.0 --lr 0.1 --batch_size 1024 --neg_sample_size 256 --max_step 1000 --log_interval $LOG_INTERVALS --batch_size_eval 1024 --test -adv --regularization_coef 1.00E-09 --format $DATASET_FORMAT --data_files $DATASET_FILES --gpu 0 --mix_cpu_gpu" || \
-    { echo "----------" && echo "Phase error raised";}
-    
+
+    python $TRAIN_ENTRY_POINT || \
+    { echo "----------" && echo "Phase 1/1 error raised" && exit 1;}
+
     PHASE1_ENDTIME=$(date +%s)
     echo "----------"
-    echo "Phase finished"
+    echo "Phase 1/1 finished"
     echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
     echo "----------"
-else
-    # partition on worker chief
-    echo "Phase 1/4: load and partition graph"
+
+# partitioner partitioning workload
+elif ! [ -z ${DGL_OPERATOR_PHASE_ENV+x} ] && [ $DGL_OPERATOR_PHASE_ENV = "Partitioner" ]
+then
+    #########################
+    # 1. load and partition #
+    #########################
+    echo "Phase 1/5: load and partition graph"
     echo "----------"
+
+    #########################
+    # 1.1 use dataset FB15k #
+    #########################
     if [ -z ${IGNORE_PARTITION+x} ] && [ -z ${CUSTOM_DATASET+x} ]
     then
-        python $LAUNCH_ENTRY_POINT \
-        --ip_config "/etc/dgl/hostfile" \
-        --worker_chief_index "0" \
-        --cmd_type "exec_worker_chief" \
-        "DGLBACKEND=pytorch dglke_partition --dataset $DATASET -k $PARTITIONS --data_path $WORKSPACE/dataset" || \
+        echo "Conditions: IGNORE_PARTITION 0, CUSTOM_DATASET 0"
+        echo "----------"
+
+        DGLBACKEND=pytorch dglke_partition \
+        --dataset $DATASET \
+        -k $PARTITIONS \
+        --data_path $WORKSPACE/dataset || \
         { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
+    
+    ##########################
+    # 1.2 use custom dataset #
+    ##########################
     elif [ -z ${IGNORE_PARTITION+x} ] && ! [ -z ${CUSTOM_DATASET+x} ]
     then
-        python $LAUNCH_ENTRY_POINT \
-        --ip_config "/etc/dgl/hostfile" \
-        --worker_chief_index "0" \
-        --cmd_type "exec_worker_chief" \
-        "DGLBACKEND=pytorch dglke_partition --dataset $DATASET -k $PARTITIONS --data_path $WORKSPACE/dataset --format $DATASET_FORMAT --data_files $DATASET_FILES" || \
+        echo "Conditions: IGNORE_PARTITION 0, CUSTOM_DATASET 1"
+        echo "----------"
+
+        DGLBACKEND=pytorch dglke_partition \
+        --dataset $DATASET \
+        -k $PARTITIONS \
+        --data_path $WORKSPACE/dataset \
+        --format $DATASET_FORMAT \
+        --data_files $DATASET_FILES || \
         { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
-    elif ! [ -z ${IGNORE_PARTITION+x} ]
+
+    fi
+    PHASE1_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 1/5 finished"
+    echo "Phase : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    #########################
+    # 2. deliver partitions #
+    #########################
+    PHASE2_STARTTIME=$(date +%s)
+    echo "Phase 2/5: deliver partitions"
+    echo "----------"
+
+    ######################################
+    # 2.1 deliver partitions to launcher #
+    ######################################
+    if [ -z ${PVC_PARTITIONED_DIR+x} ]
+    then
+        python $LAUNCH_ENTRY_POINT \
+        --workspace $WORKSPACE \
+        --target_dir $WORKSPACE \
+        --ip_config "/etc/dgl/leadfile" \
+        --cmd_type "copy_batch_container" \
+        --container "watcher-loop-partitioner" \
+        --source_file_paths "$WORKSPACE/dataset" || \
+        { echo "----------" && echo "Phase 2/5 error raised" && exit 1;}
+    ##########################################
+    # 2.2 deliver partitions to launcher pvc #
+    ##########################################
+    else
+        scp -r "$WORKSPACE/dataset/$DATASET" $PVC_PARTITIONED_DIR
+    fi
+    PHASE2_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 2/5 finished"
+    echo "Phase : $(($PHASE2_ENDTIME - $PHASE2_STARTTIME)) seconds"
+    echo "Total : $(($PHASE2_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+# launcher workflow after partitioning
+else
+    ######################################
+    # 3. dispatch partitions by launcher #
+    ######################################
+    PHASE3_STARTTIME=$(date +%s)
+    echo "Phase 3/5: dispatch partitions"
+    echo "----------"
+
+    #########################
+    # 3.1 use complete copy #
+    #########################
+    if [ -z ${PVC_PARTITIONED_DIR+x} ]
     then
         python $LAUNCH_ENTRY_POINT \
         --workspace $WORKSPACE \
         --target_dir "$WORKSPACE/dataset" \
         --ip_config "/etc/dgl/hostfile" \
         --cmd_type "copy_batch" \
-        --source_file_paths $PARTITIONED_DATASET_DIR || \
-        { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
+        --source_file_paths "$WORKSPACE/dataset/$DATASET" || \
+        { echo "----------" && echo "Phase 3/5 error raised" && exit 1;}
+    
+    ###############
+    # 3.2 use pvc #
+    ###############
+    else
+        echo "----------"
     fi
-    PHASE1_ENDTIME=$(date +%s)
+    PHASE3_ENDTIME=$(date +%s)
     echo "----------"
-    echo "Phase 1/4 finished"
-    echo "Phase : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
-    echo "Total : $(($PHASE1_ENDTIME - $STARTTIME)) seconds"
-    echo "----------"
-
-    # copy kubectl to worker chief
-    PHASE2_STARTTIME=$(date +%s)
-    echo "Phase 2/4: deliver kubectl and partition data"
-    echo "----------"
-    
-    python $LAUNCH_ENTRY_POINT \
-    --workspace $WORKSPACE \
-    --target_dir "/opt/kube" \
-    --ip_config "/etc/dgl/hostfile" \
-    --worker_chief_index "0" \
-    --cmd_type "copy_worker_chief" \
-    --source_file_paths "/opt/kube/kubectl" || \
-    { echo "----------" && echo "Phase 2/4 error raised" && exit 1;}
-
-    python $LAUNCH_ENTRY_POINT \
-    --ip_config "/etc/dgl/hostfile" \
-    --worker_chief_index "0" \
-    --cmd_type "exec_worker_chief" \
-    "cd $WORKSPACE && python $LAUNCH_ENTRY_POINT --workspace $WORKSPACE --target_dir $WORKSPACE/dataset --ip_config /etc/dgl/hostfile --cmd_type copy_batch --source_file_paths $WORKSPACE/dataset/$DATASET" || \
-    { echo "----------" && echo "Phase 2/4 error raised" && exit 1;}
-    
-    PHASE2_ENDTIME=$(date +%s)
-    echo "----------"
-    echo "Phase 2/4 finished"
-    echo "Phase : $(($PHASE2_ENDTIME - $PHASE2_STARTTIME)) seconds"
-    echo "Total : $(($PHASE2_ENDTIME - $STARTTIME)) seconds"
+    echo "Phase 3/5 finished"
+    echo "Phase : $(($PHASE3_ENDTIME - $PHASE3_STARTTIME)) seconds"
+    echo "Total : $(($PHASE3_ENDTIME - $STARTTIME)) seconds"
     echo "----------"
 
-    # batch revise hostfile
-    PHASE3_STARTTIME=$(date +%s)
-    echo "Phase 3/4: batch revise hostfile for DGLKE"
+    ########################################
+    # 4. revise hostfile in a batch manner #
+    ########################################
+    PHASE4_STARTTIME=$(date +%s)
+    echo "Phase 4/5: batch revise hostfile for DGL"
     echo "----------"
 
     python $LAUNCH_ENTRY_POINT \
     --ip_config "/etc/dgl/hostfile" \
     --cmd_type "exec_batch" \
-    "cd $WORKSPACE && python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --num_servers $SERVERS --framework DGLKE" || \
-    { echo "----------" && echo "Phase 3/4 error raised" && exit 1;}
-    
-    PHASE3_ENDTIME=$(date +%s)
-    echo "----------"
-    echo "Phase 3/4 finished"
-    echo "Phase : $(($PHASE3_ENDTIME - $PHASE3_STARTTIME)) seconds"
-    echo "Total : $(($PHASE3_ENDTIME - $STARTTIME)) seconds"
-    echo "----------"
+    "python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGLKE" &&
+    python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGLKE || \
+    { echo "----------" && echo "Phase 4/5 error raised" && exit 1;}
 
-    # train
-    PHASE4_STARTTIME=$(date +%s)
-    echo "Phase 4/4: launch the training"
-    echo "----------"
-    if [ -z ${CUSTOM_DATASET+x} ]
-    then
-        python $LAUNCH_ENTRY_POINT \
-        --ip_config "/etc/dgl/hostfile" \
-        --worker_chief_index "0" \
-        --cmd_type "exec_worker_chief" \
-        "DGLBACKEND=pytorch dglke_dist_train --path $WORKSPACE --ip_config $WORKSPACE/hostfile_revised --host_config /etc/dgl/hostfile --num_client_proc $CLIENT_PROCS --model_name $MODEL_NAME --dataset $DATASET --data_path $WORKSPACE/dataset --hidden_dim 400 --gamma 143.0 --lr 0.1 --batch_size 1024 --neg_sample_size 256 --max_step 1000 --log_interval $LOG_INTERVALS --batch_size_eval 1024 --test -adv --regularization_coef 1.00E-09 --num_servers $SERVERS --save_path $SAVE_PATH" || \
-        { echo "----------" && echo "Phase 4/4 error raised" && exit 1;}
-    else
-        python $LAUNCH_ENTRY_POINT \
-        --ip_config "/etc/dgl/hostfile" \
-        --worker_chief_index "0" \
-        --cmd_type "exec_worker_chief" \
-        "DGLBACKEND=pytorch dglke_dist_train --path $WORKSPACE --ip_config $WORKSPACE/hostfile_revised --host_config /etc/dgl/hostfile --num_client_proc $CLIENT_PROCS --model_name $MODEL_NAME --dataset $DATASET --data_path $WORKSPACE/dataset --hidden_dim 400 --gamma 143.0 --lr 0.1 --batch_size 1024 --neg_sample_size 256 --max_step 1000 --log_interval $LOG_INTERVALS --batch_size_eval 1024 --test -adv --regularization_coef 1.00E-09 --num_servers $SERVERS --format $DATASET_FORMAT --data_files $DATASET_FILES --save_path $SAVE_PATH" || \
-        { echo "----------" && echo "Phase 4/4 error raised" && exit 1;}
-    fi
     PHASE4_ENDTIME=$(date +%s)
     echo "----------"
-    echo "Phase 4/4 finished"
+    echo "Phase 4/5 finished"
     echo "Phase : $(($PHASE4_ENDTIME - $PHASE4_STARTTIME)) seconds"
     echo "Total : $(($PHASE4_ENDTIME - $STARTTIME)) seconds"
+    echo "----------"
+
+    ############
+    # 5. trian #
+    ############
+    PHASE5_STARTTIME=$(date +%s)
+    echo "Phase 5/5: launch the training"
+    echo "----------"
+
+    ###################################
+    # 5.1 train with built-in dataset #
+    ###################################
+    if [ -z ${CUSTOM_DATASET+x} ]
+    then
+        echo "Conditions: CUSTOM_DATASET 0"
+        echo "----------"
+
+        DGLBACKEND=pytorch dglke_dist_train \
+        --path $WORKSPACE \
+        --ip_config $WORKSPACE/hostfile_revised \
+        --host_config /etc/dgl/hostfile \
+        --num_client_proc $CLIENT_PROCS \
+        --model_name $MODEL_NAME \
+        --dataset $DATASET \
+        --data_path $WORKSPACE/dataset \
+        --hidden_dim 400 \
+        --gamma 143.0 \
+        --lr 0.1 \
+        --batch_size 1024 \
+        --neg_sample_size 256 \
+        --max_step 1000 \
+        --log_interval $LOG_INTERVALS \
+        --batch_size_eval 1024 \
+        --test -adv \
+        --regularization_coef 1.00E-09 \
+        --num_servers $SERVERS \
+        --save_path $SAVE_PATH || \
+        { echo "----------" && echo "Phase 5/5 error raised" && exit 1;}
+
+    #################################
+    # 5.2 train with custom dataset #
+    #################################
+    else
+        echo "Conditions: CUSTOM_DATASET 1"
+        echo "----------"
+
+        DGLBACKEND=pytorch dglke_dist_train \
+        --path $WORKSPACE \
+        --ip_config $WORKSPACE/hostfile_revised \
+        --host_config /etc/dgl/hostfile \
+        --num_client_proc $CLIENT_PROCS \
+        --model_name $MODEL_NAME \
+        --dataset $DATASET \
+        --data_path $WORKSPACE/dataset \
+        --hidden_dim 400 \
+        --gamma 143.0 \
+        --lr 0.1 \
+        --batch_size 1024 \
+        --neg_sample_size 256 \
+        --max_step 1000 \
+        --log_interval $LOG_INTERVALS \
+        --batch_size_eval 1024 \
+        --test -adv \
+        --regularization_coef 1.00E-09 \
+        --num_servers $SERVERS \
+        --save_path $SAVE_PATH \
+        --format $DATASET_FORMAT \
+        --data_files $DATASET_FILES || \
+        { echo "----------" && echo "Phase 5/5 error raised" && exit 1;}
+    fi
+    PHASE5_ENDTIME=$(date +%s)
+    echo "----------"
+    echo "Phase 5/5 finished"
+    echo "Phase : $(($PHASE5_ENDTIME - $PHASE5_STARTTIME)) seconds"
+    echo "Total : $(($PHASE5_ENDTIME - $STARTTIME)) seconds"
     echo "----------"
 fi

@@ -34,7 +34,7 @@ def main():
     parser.add_argument('--rel_workload_path', type=str, required=True,
                         help='Relative path in workspace to store the workload data.')
     parser.add_argument('--part_config', type=str, required=True,
-                        help='The partition config file. The path is on the local machine (worker chief).')
+                        help='The partition config file.')
     parser.add_argument('--ip_config', type=str, required=True,
                         help='The file of IP configuration for servers. \
                         The path is on the local machine.')
