@@ -119,7 +119,7 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// TODO(ryantd): specify the reconfile log
+	// TODO(ryantd): specify the reconcile log
 	log.Info("Reconcile", "version", dgljob.ResourceVersion)
 
 	// Working on terminating, just return for dgl job that is terminating

@@ -32,8 +32,8 @@ case $key in
     IGNORE_PARTITION=true
     shift
     ;;
-    --user-dataset-dir)
-    USER_DATASET_DIR="$2"
+    --partitioned-dataset-dir)
+    PARTITIONED_DATASET_DIR="$2"
     shift
     shift
     ;;
@@ -142,7 +142,7 @@ else
         --target_dir "$WORKSPACE/dataset" \
         --ip_config "/etc/dgl/hostfile" \
         --cmd_type "copy_batch" \
-        --source_file_paths $USER_DATASET_DIR || \
+        --source_file_paths $PARTITIONED_DATASET_DIR || \
         { echo "----------" && echo "Phase 1/4 error raised" && exit 1;}
     fi
     PHASE1_ENDTIME=$(date +%s)
