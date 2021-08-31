@@ -5,7 +5,7 @@ import logging
 import time
 
 
-def reviseIPConfigForDGLKE(workspace, ip_config, num_servers):
+def reviseIPConfigForDGLKE(workspace, ip_config, num_servers=1):
     local_ip_config = workspace + '/hostfile_revised'
     tuples = []
     with open(ip_config, "r") as f:

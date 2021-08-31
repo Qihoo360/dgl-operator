@@ -255,8 +255,8 @@ else
     python $LAUNCH_ENTRY_POINT \
     --ip_config "/etc/dgl/hostfile" \
     --cmd_type "exec_batch" \
-    "python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGLKE" &&
-    python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGLKE || \
+    "python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGLKE --num_servers $SERVERS" &&
+    python $REVISE_HOSTFILE_ENTRY_POINT --workspace $WORKSPACE --ip_config /etc/dgl/hostfile --framework DGLKE --num_servers $SERVERS || \
     { echo "----------" && echo "Phase 4/5 error raised" && exit 1;}
 
     PHASE4_ENDTIME=$(date +%s)
