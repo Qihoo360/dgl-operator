@@ -134,7 +134,7 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if isJobFinished(dgljob.Status) {
 		if isJobSucceeded(dgljob.Status) && isCleanUpPods(dgljob.Spec.CleanPodPolicy) {
 			// set worker StatefulSet Replicas to 0.
-			if err := r.deleteWorkers(&dgljob); err != nil {
+			if err := r.deleteWorkersAndServices(&dgljob); err != nil {
 				return ctrl.Result{}, err
 			}
 			initializeDGLJobStatus(&dgljob, dglv1a1.WorkerReplica)
@@ -148,7 +148,7 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if !requeue {
 			if isJobFailed(dgljob.Status) && isCleanUpPods(dgljob.Spec.CleanPodPolicy) {
 				// set worker StatefulSet Replicas to 0.
-				if err := r.deleteWorkers(&dgljob); err != nil {
+				if err := r.deleteWorkersAndServices(&dgljob); err != nil {
 					return ctrl.Result{}, err
 				}
 			}
@@ -282,6 +282,20 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		dgljob.Status.Phase == dglv1a1.Training {
 		workers, err = r.getOrCreateWorkers(&dgljob)
 		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		// create headless service
+		for _, worker := range workers.Items {
+			svc := buildServiceForWorker(worker)
+			if err := r.Get(ctx, client.ObjectKeyFromObject(svc), &corev1.Service{}); err == nil {
+				continue
+			}
+			if err := ctrl.SetControllerReference(&dgljob, svc, r.Scheme); err != nil {
+				log.Error(err, "make reference failed")
+				continue
+			}
+			err := r.createResource(ctx, &dgljob, svc)
 			return ctrl.Result{}, err
 		}
 	}
@@ -475,6 +489,29 @@ func (r *DGLJobReconciler) getRunningPods(ctx context.Context, dgljob *dglv1a1.D
 		return nil, err
 	}
 	return &podList, nil
+}
+
+// buildServiceForWorker creates the Service for this workerPod
+func buildServiceForWorker(workerPod corev1.Pod) *corev1.Service {
+	var ports = []corev1.ServicePort{}
+	ports = append(ports, corev1.ServicePort{
+		Port: int32(dglv1a1.DGL_PORT),
+	})
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      workerPod.Name,
+			Namespace: workerPod.Namespace,
+			Labels:    map[string]string{},
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: ports,
+			Selector: map[string]string{
+				dglv1a1.DGLReplicaName: workerPod.Name,
+			},
+			ClusterIP: "None",
+		},
+	}
+	return svc
 }
 
 // getOrCreateConfigMap gets the ConfigMap controlled by this DGLJob, or creates
@@ -704,8 +741,8 @@ func (r *DGLJobReconciler) getOrCreateWorkers(dgljob *dglv1a1.DGLJob) (*corev1.P
 	return &workerPods, nil
 }
 
-// deleteWorkers delete the worker Pod controlled by this DGLJob
-func (r *DGLJobReconciler) deleteWorkers(dgljob *dglv1a1.DGLJob) error {
+// deleteWorkersAndServices delete the worker Pod controlled by this DGLJob
+func (r *DGLJobReconciler) deleteWorkersAndServices(dgljob *dglv1a1.DGLJob) error {
 	ctx := context.Background()
 	var (
 		workerPrefix   string = dgljob.Name + workerSuffix
@@ -743,6 +780,23 @@ func (r *DGLJobReconciler) deleteWorkers(dgljob *dglv1a1.DGLJob) error {
 		err = r.deleteResource(ctx, dgljob, &pod)
 		if err != nil && !errors.IsNotFound(err) {
 			r.Log.Error(err, fmt.Sprintf("Failed to delete pod[%s/%s]: %v", dgljob.Namespace, name, err))
+			return err
+		}
+	}
+
+	var svcs corev1.ServiceList
+	if err := r.List(
+		ctx,
+		&svcs,
+		client.InNamespace(dgljob.Namespace),
+		client.MatchingFields{jobOwnerKey: dgljob.Name},
+	); err != nil {
+		return err
+	}
+	for i := range svcs.Items {
+		err := r.deleteResource(ctx, dgljob, &svcs.Items[i])
+		if err != nil && !errors.IsNotFound(err) {
+			r.Log.Error(err, fmt.Sprintf("Failed to delete service[%s/%s]: %v", svcs.Items[i].Namespace, svcs.Items[i].Name, err))
 			return err
 		}
 	}
