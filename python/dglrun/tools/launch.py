@@ -62,25 +62,10 @@ def get_ip_host_pairs(ip_config):
                 raise RuntimeError("Format error of ip_config.")
     return hosts
 
-def run_exec_worker_chief(args, udf_command):
-    pod_name = get_ip_host_pairs(args.ip_config)[args.worker_chief_index][1]
-    kubexec(udf_command, pod_name)
-
 def run_exec(args, udf_command):
     for pod_info in get_ip_host_pairs(args.ip_config):
         pod_name = pod_info[1]
         kubexec(udf_command, pod_name)
-
-def run_cp_worker_chief(args, handle_rw=False):
-    pod_name = get_ip_host_pairs(args.ip_config)[args.worker_chief_index][1]
-    for source_file_path in args.source_file_paths.split():
-        if handle_rw:
-            cp(source_file_path, args.workspace)
-            kubexec(f'mkdir -p {args.target_dir}', pod_name)
-            kubecp(f'{args.workspace}/{source_file_path.split("/")[-1]}', pod_name, args.target_dir)
-        else:
-            kubexec(f'mkdir -p {args.target_dir}', pod_name)
-            kubecp(source_file_path, pod_name, args.target_dir)
 
 def run_cp(args, handle_rw=False):
     for pod_info in get_ip_host_pairs(args.ip_config):
@@ -191,8 +176,6 @@ def main():
                         help='The number of OMP threads in the server process. \
                         It should be small if server processes and trainer processes run on \
                         the same machine. By default, it is 1.')
-    parser.add_argument('--worker_chief_index', type=int, default=0,
-                        help='The index of worker will acquire the cmd')
     parser.add_argument('--target_dir', type=str, default="/dgl_workspace",
                         help='Path of user directory.')
     parser.add_argument('--cmd_type', type=str)
@@ -204,18 +187,7 @@ def main():
     assert args.cmd_type is not None, 'A user has to specify --cmd_type.'
     assert args.ip_config is not None, \
         'A user has to specify an IP configuration file with --ip_config.'
-    if args.cmd_type == 'exec_worker_chief':
-        assert len(udf_command) == 1, 'Please provide user command line.'
-        assert args.worker_chief_index is not None, \
-            'A user has to specify --worker_chief_index.'
-        udf_command = str(udf_command[0])
-        if 'python' not in udf_command and \
-            'dglke_partition' not in udf_command and \
-            'dglke_dist_train' not in udf_command and \
-            'dglke_train' not in udf_command:
-            raise RuntimeError("Only support Python executable, dglke_partition, dglke_train and dglke_dist_train.")
-        run_exec_worker_chief(args, udf_command)
-    elif args.cmd_type == 'exec_batch':
+    if args.cmd_type == 'exec_batch':
         assert len(udf_command) == 1, 'Please provide user command line.'
         udf_command = str(udf_command[0])
         if 'python' not in udf_command and \
@@ -224,15 +196,6 @@ def main():
             'dglke_train' not in udf_command:
             raise RuntimeError("Only support Python executable, dglke_partition, dglke_train and dglke_dist_train.")
         run_exec(args, udf_command)
-    elif args.cmd_type == 'copy_worker_chief':
-        assert args.workspace is not None, 'A user has to specify a workspace with --workspace.'
-        assert args.worker_chief_index is not None, \
-            'A user has to specify --worker_chief_index.'
-        assert args.target_dir is not None, \
-            'A user has to specify a target_dir with --target_dir.'
-        assert args.source_file_paths is not None, \
-            'A user has to specify a source file path with --source_file_paths.'
-        run_cp_worker_chief(args, True)
     elif args.cmd_type == 'copy_batch':
         assert args.workspace is not None, 'A user has to specify a workspace with --workspace.'
         assert args.target_dir is not None, \
