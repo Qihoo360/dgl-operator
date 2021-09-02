@@ -55,13 +55,12 @@ const (
 	kubectlDownloadName    = "kubectl-download"
 	partitionCollectName   = "partition-collect"
 
-	kubexecPathEnv    = "DGL_OPERATOR_KUBEXEC_PATH"
-	hostfilePathEnv   = "DGL_OPERATOR_HOSTFILE_PATH"
-	partfilePathEnv   = "DGL_OPERATOR_PARTFILE_PATH"
-	kubectlPathEnv    = "DGL_OPERATOR_KUBECTL_PATH"
-	kubeEnv           = "DGL_OPERATOR_ENV"
-	phaseEnv          = "DGL_OPERATOR_PHASE_ENV"
-	containerPortName = "dglserver"
+	kubexecPathEnv  = "DGL_OPERATOR_KUBEXEC_PATH"
+	hostfilePathEnv = "DGL_OPERATOR_HOSTFILE_PATH"
+	partfilePathEnv = "DGL_OPERATOR_PARTFILE_PATH"
+	kubectlPathEnv  = "DGL_OPERATOR_KUBECTL_PATH"
+	kubeEnv         = "DGL_OPERATOR_ENV"
+	phaseEnv        = "DGL_OPERATOR_PHASE_ENV"
 
 	configVolumeName  = "config-volume"
 	configMountPath   = "/etc/dgl"
@@ -498,7 +497,7 @@ func buildServiceForWorker(workerPod corev1.Pod) *corev1.Service {
 	var ports = []corev1.ServicePort{}
 	for i := 0; i < HOST_PORT_NUM; i++ {
 		ports = append(ports, corev1.ServicePort{
-			Name: fmt.Sprintf("dgl-port-%d", i),
+			Name: fmt.Sprintf("s-port-%d", i),
 			Port: int32(dglv1a1.DGL_PORT + i),
 		})
 	}
@@ -948,13 +947,15 @@ func buildWorkerOrPartitionerPod(dgljob *dglv1a1.DGLJob, name string, rType dglv
 			Name:      configVolumeName,
 			MountPath: configMountPath,
 		})
-	container.Ports = append(
-		container.Ports,
-		corev1.ContainerPort{
-			Name:          containerPortName,
-			ContainerPort: dglv1a1.DGL_PORT,
+	var ports = []corev1.ContainerPort{}
+	for i := 0; i < HOST_PORT_NUM; i++ {
+		ports = append(ports, corev1.ContainerPort{
+			Name:          fmt.Sprintf("c-port-%d", i),
+			ContainerPort: int32(dglv1a1.DGL_PORT + i),
 			Protocol:      corev1.ProtocolTCP,
 		})
+	}
+	container.Ports = ports
 	podSpec.Spec.Containers[0] = container
 
 	shmSizeLimitInGB = container.Resources.Limits.Memory().Value() / 1000000000 / 2
@@ -1022,6 +1023,7 @@ func buildWorkerOrPartitionerPod(dgljob *dglv1a1.DGLJob, name string, rType dglv
 			kubectlDownloadContainer)
 
 		mainContainer := dgljob.Spec.DGLReplicaSpecs[dglv1a1.LauncherReplica].Template.Spec.Containers[0]
+		podSpec.Spec.Containers[0].Ports = []corev1.ContainerPort{}
 		podSpec.Spec.Containers[0].Command = mainContainer.Command
 		podSpec.Spec.Containers[0].Args = mainContainer.Args
 
