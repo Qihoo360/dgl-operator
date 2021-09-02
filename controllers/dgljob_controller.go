@@ -77,6 +77,8 @@ const (
 	initContainerMem            = "512Mi"
 	defaultLauncherContainerCpu = "1"
 	defaultLauncherContainerMem = "2Gi"
+
+	HOST_PORT_NUM = 20
 )
 
 var (
@@ -285,7 +287,7 @@ func (r *DGLJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 
-		// create headless service
+		// create headless services
 		for _, worker := range workers.Items {
 			svc := buildServiceForWorker(worker)
 			if err := r.Get(ctx, client.ObjectKeyFromObject(svc), &corev1.Service{}); err == nil {
@@ -494,9 +496,12 @@ func (r *DGLJobReconciler) getRunningPods(ctx context.Context, dgljob *dglv1a1.D
 // buildServiceForWorker creates the Service for this workerPod
 func buildServiceForWorker(workerPod corev1.Pod) *corev1.Service {
 	var ports = []corev1.ServicePort{}
-	ports = append(ports, corev1.ServicePort{
-		Port: int32(dglv1a1.DGL_PORT),
-	})
+	for i := 0; i < HOST_PORT_NUM; i++ {
+		ports = append(ports, corev1.ServicePort{
+			Name: fmt.Sprintf("dgl-port-%d", i),
+			Port: int32(dglv1a1.DGL_PORT + i),
+		})
+	}
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workerPod.Name,
