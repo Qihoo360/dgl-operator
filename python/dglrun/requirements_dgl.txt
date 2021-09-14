@@ -1,7 +1,7 @@
 
 # pytorch
-torch==1.5.1
-torchvision==0.6.1
+torch==1.6.0
+torchvision==0.7.0
 
 # dgl-related
 dgl==0.6.1
