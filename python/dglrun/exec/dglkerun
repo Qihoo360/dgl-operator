@@ -82,7 +82,7 @@ case $key in
     shift
     shift
     ;;
-    --num-client-proc)
+    --num-client-procs)
     CLIENT_PROCS="$2"
     shift
     shift
