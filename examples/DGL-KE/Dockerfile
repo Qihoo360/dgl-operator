@@ -7,7 +7,13 @@ RUN mkdir /dgl_workspace
 WORKDIR /dgl_workspace
 
 RUN apt-get update
-RUN apt-get install -y vim build-essential python3-dev make cmake git
+RUN apt-get install -y --no-install-recommends \
+		vim \
+        build-essential \
+        python3-dev \
+        make \
+        cmake \
+        git
 
 COPY python/dglrun base
 RUN mv base/tools tools
